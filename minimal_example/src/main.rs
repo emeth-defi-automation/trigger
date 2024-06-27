@@ -61,8 +61,13 @@ async fn main() -> Result<()> {
     let balance2 = token_manager.get_balance("0xF7829a3addC8BAD498fAa73370889c023D1295C5".parse()?).call().await?;
     println!("balance of user2 {:?}",balance2);
 
-    let execute_transfer_tx = action_executor.execute_transfer("0x8C33f3Cd815e4C0624E53FadCf0fC21e19125bdD".parse()?, "0xF7829a3addC8BAD498fAa73370889c023D1295C5".parse()?, U256::from(20)).send().await?.await?;
+    let execute_transfer_tx = action_executor.execute_transfer("0x8C33f3Cd815e4C0624E53FadCf0fC21e19125bdD".parse()?, "0xF7829a3addC8BAD498fAa73370889c023D1295C5".parse()?, U256::from(20));
     println!("executied transfer {:?}",execute_transfer_tx);
+    let sent_transfer = execute_transfer_tx.send().await?;
+    println!("sent transfer {:?}",sent_transfer);
+    let sent_transfer_tx = sent_transfer.await?;
+    println!("sent transfer tx {:?}",sent_transfer_tx);
+
 
     let balance = token_manager.get_balance("0x8C33f3Cd815e4C0624E53FadCf0fC21e19125bdD".parse()?).call().await?;
     println!("balance of user1 {:?}",balance);

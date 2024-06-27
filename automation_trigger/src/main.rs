@@ -9,7 +9,7 @@ use eyre::Result;
 use resolver::print;
 use serde_json::Number;
 use std::{sync::Arc, time::{SystemTime, UNIX_EPOCH}};
-use tokio::time::{sleep_until, Instant, Duration};
+use tokio::time::{sleep, sleep_until, Duration, Instant};
 use chrono::{Utc};
 use hex_literal::hex;
 use std::str;
@@ -29,13 +29,14 @@ abigen!(
     TransferAction,
     r#"[
         function getActionById(uint actionId) public view returns (address ownerAddress,bool initialized, uint duration, uint timeZero, bool isActive)
+        function executeAction(uint actionId) public
     ]"#,
 );
 
 
 const WSS_URL: &str = "https://eth-sepolia.g.alchemy.com/v2/rOnL9TIb2mwbMDatQfBX-BJXUFH4Weml";
-const TOKEN_DELEGATOR_CONTRACT_ADDRESS: &str="0x5335959B18b8793d0C2aBA301da50c91267EbcD6";
-const TRANSFER_ACTION_CONTRACT_ADDRESS: &str="0xf402c8fd146C3b36D573df2E3f29507DF1683261";
+const TOKEN_DELEGATOR_CONTRACT_ADDRESS: &str="0x58816DfA47be3c6052c53605363395e74AF3a832";
+const TRANSFER_ACTION_CONTRACT_ADDRESS: &str="0xDe8924e7B33c27e2b9Df2f54AFF11b5b0C6d7A16";
 const PRIV_KEY:&str = "0x0b7239cc8c8b2626112cb5679db56cfcc73f6f2a0f8f24b81b84cc6eaf0bfb58";
 
 #[tokio::main]
@@ -73,18 +74,107 @@ async fn listen_specific_events(client:&Client,contract_addr:&H160) -> Result<()
         loop{
             let now = SystemTime::now();
             let target_time = UNIX_EPOCH + Duration::from_secs(time_zero+5);
+
+            if target_time <= now {
+                println!("time_zero is in the past, immediately calling execute_action");
+                let tx = contract.execute_action(U256::from(action_id).to_owned());
+                let mut i = 0;
+                loop{
+                   match tx.send().await {
+                       Ok(tx_result)=>{
+                           println!("pending_tx {:?}", tx_result);
+                           match tx_result.await {
+                               Ok(tx_receipt) => {
+                                   println!("mindex tx {:?}", tx_receipt);
+                                   break Some(tx_receipt);
+                               },
+                               Err(e) => {
+                                   println!("Failed to mine tx");
+                                       break None;
+                               }
+                           }
+                       },
+                       Err(e) => {
+                           println!("Failed in pending tx");
+                           if i==5{
+                               break None;
+                           }
+                       }
+                   }
+                   i+=1;
+               };
+               let action = transferContract.get_action_by_id(action_id.clone()).call().await?;
+            let (address, initialized, duration,time_zero_from_block, is_active) = action;
+            println!("im after sleep");
+            if !is_active{
+                break;
+            }
+            println!("new timestamp {:?}",time_zero_from_block);
+            time_zero = time_zero_from_block.as_u64(); 
+            continue;
+            } 
+
             let duration_until_target = target_time.duration_since(now)?;
             let target_instant = Instant::now() + duration_until_target;
+
             println!("im before sleep");
             sleep_until(target_instant).await;
             
             let tx = contract.execute_action(U256::from(action_id).to_owned());
             println!("tx {:?}",tx);
-            let pending_tx = tx.send().await?;
-            println!("pending_tx {:?}",pending_tx);
-            let mined_tx = pending_tx.await?;
-            println!("mined_tx {:?}",mined_tx);
-            println!("Transaction Receipt: {}",serde_json::to_string(&mined_tx)?);
+
+            let mut i = 0;
+             loop{
+                match tx.send().await {
+                    Ok(tx_result)=>{
+                        println!("pending_tx {:?}", tx_result);
+                        match tx_result.await {
+                            Ok(tx_receipt) => {
+                                println!("mindex tx {:?}", tx_receipt);
+                                break Some(tx_receipt);
+                            },
+                            Err(e) => {
+                                println!("Failed to mine tx");
+                                    break None;
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        println!("Failed in pending tx");
+                        if i==5{
+                            break None;
+                        }
+                    }
+                }
+                i+=1;
+            };
+
+        //     if pending_tx.is_none(){
+        //         continue;
+        //     }
+
+
+        //         let mut j = 0;
+
+
+        //  loop {
+        //      match pending_tx.await {
+        //         Ok(tx_receipt) => {
+        //             println!("mindex tx {:?}", tx_receipt);
+        //             break Some(tx_receipt);
+        //         },
+        //         Err(e) => {
+        //             println!("Failed to send transaction");
+        //             if j==5{
+        //                 break None;
+        //             }
+        //         }
+        //     }
+        //     j+=1;
+        // };
+
+            
+
             let action = transferContract.get_action_by_id(action_id.clone()).call().await?;
             let (address, initialized, duration,time_zero_from_block, is_active) = action;
             println!("im after sleep");
