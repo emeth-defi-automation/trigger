@@ -154,32 +154,6 @@ async fn listen_specific_events(client:&Client,contract_addr:&H160) -> Result<()
                 i+=1;
             };
 
-        //     if pending_tx.is_none(){
-        //         continue;
-        //     }
-
-
-        //         let mut j = 0;
-
-
-        //  loop {
-        //      match pending_tx.await {
-        //         Ok(tx_receipt) => {
-        //             println!("mindex tx {:?}", tx_receipt);
-        //             break Some(tx_receipt);
-        //         },
-        //         Err(e) => {
-        //             println!("Failed to send transaction");
-        //             if j==5{
-        //                 break None;
-        //             }
-        //         }
-        //     }
-        //     j+=1;
-        // };
-
-            
-
             let action = transferContract.get_action_by_id(action_id.clone()).call().await?;
             let (address, initialized, duration,time_zero_from_block, is_active) = action;
             println!("im after sleep");
