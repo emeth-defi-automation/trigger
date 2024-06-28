@@ -33,11 +33,87 @@ abigen!(
     ]"#,
 );
 
+abigen!(
+    SwapAction,
+    r#"[
+        {
+            "constant": true,
+            "inputs": [
+                {
+                    "name": "actionId",
+                    "type": "uint256"
+                }
+            ],
+            "name": "getActionById",
+            "outputs": [
+                {
+                    "name": "ownerAddress",
+                    "type": "address"
+                },
+                {
+                    "name": "initialized",
+                    "type": "bool"
+                },
+                {
+                    "name": "duration",
+                    "type": "uint256"
+                },
+                {
+                    "name": "timeZero",
+                    "type": "uint256"
+                },
+                {
+                    "name": "tokenIn",
+                    "type": "address"
+                },
+                {
+                    "name": "tokenOut",
+                    "type": "address"
+                },
+                {
+                    "name": "amountIn",
+                    "type": "uint256"
+                },
+                {
+                    "name": "from",
+                    "type": "address"
+                },
+                {
+                    "name": "to",
+                    "type": "address"
+                },
+                {
+                    "name": "isActive",
+                    "type": "bool"
+                }
+            ],
+            "payable": false,
+            "stateMutability": "view",
+            "type": "function"
+        },
+        {
+            "constant": false,
+            "inputs": [
+                {
+                    "name": "actionId",
+                    "type": "uint256"
+                }
+            ],
+            "name": "executeAction",
+            "outputs": [],
+            "payable": false,
+            "stateMutability": "nonpayable",
+            "type": "function"
+        }
+    ]"#,
+);
+
 
 
 const WSS_URL: &str = "https://eth-sepolia.g.alchemy.com/v2/rOnL9TIb2mwbMDatQfBX-BJXUFH4Weml";
 const TOKEN_DELEGATOR_CONTRACT_ADDRESS: &str="0x58816DfA47be3c6052c53605363395e74AF3a832";
 const TRANSFER_ACTION_CONTRACT_ADDRESS: &str="0xDe8924e7B33c27e2b9Df2f54AFF11b5b0C6d7A16";
+const SWAP_ACTION_CONTRACT_ADDRESS: &str="0xc71BA8Bc0DaeAF5Dc4B94d38CBdD5460d2438F6f";
 const PRIV_KEY:&str = "d9d238f2f5bd8e0e8f1436a747055c165ae04ffd1c00233f1134cbfa2c69ede3";
 
 #[tokio::main]
@@ -63,7 +139,9 @@ async fn listen_specific_events(client:&Client,contract_addr:&H160) -> Result<()
     let contract = MyContract::new(contract_addr.clone(), Arc::new(client.clone()));
 
     let transferAddress:Address = TRANSFER_ACTION_CONTRACT_ADDRESS.parse()?;
+    let swap_address: Address = SWAP_ACTION_CONTRACT_ADDRESS.parse()?;
     let transferContract = TransferAction::new(transferAddress, Arc::new(client.clone()));
+    let swap_contract = SwapAction::new(swap_address, Arc::new(client.clone()));
     let events = contract.event::<ActionExecutionAttemptedFilter>().from_block(6177567);
     let mut stream = events.stream().await?.take(1);
     
@@ -71,6 +149,7 @@ async fn listen_specific_events(client:&Client,contract_addr:&H160) -> Result<()
         println!("SomeEvent event: {event:?}");
         let mut time_zero = event.time_zero.as_u64();
         let action_id = event.action_id;
+        let contract_address = event.contract_address;
         
         loop{
             let now = SystemTime::now();
@@ -106,14 +185,25 @@ async fn listen_specific_events(client:&Client,contract_addr:&H160) -> Result<()
                    }
                    i+=1;
                };
-               let action = transferContract.get_action_by_id(action_id.clone()).call().await?;
-            let (address, initialized, duration,time_zero_from_block, is_active) = action;
-            println!("im after sleep");
-            if !is_active{
-                break;
+               if contract_address == transferAddress {
+                let action = transferContract.get_action_by_id(action_id.clone()).call().await?;
+                let (owner_address, initialized, duration, time_zero_from_block, is_active) = action;
+                println!("Transfer action: {:?}", action);
+                if !is_active {
+                    break;
+                }
+                println!("new timestamp {:?}", time_zero_from_block);
+                time_zero = time_zero_from_block.as_u64();
+            }else if contract_address == swap_address {
+                let action = swap_contract.get_action_by_id(action_id.clone()).call().await?;
+                let (owner_address, initialized, duration, time_zero_from_block, token_in, token_out, amount_in, from, to, is_active) = action;
+                println!("Swap action: {:?}", action);
+                if !is_active {
+                    break;
+                }
+                println!("new timestamp {:?}", time_zero_from_block);
+                time_zero = time_zero_from_block.as_u64();
             }
-            println!("new timestamp {:?}",time_zero_from_block);
-            time_zero = time_zero_from_block.as_u64(); 
             continue;
             } 
 
@@ -178,16 +268,26 @@ async fn listen_specific_events(client:&Client,contract_addr:&H160) -> Result<()
         //     j+=1;
         // };
 
-            
-
+        if contract_address == transferAddress {
             let action = transferContract.get_action_by_id(action_id.clone()).call().await?;
-            let (address, initialized, duration,time_zero_from_block, is_active) = action;
-            println!("im after sleep");
-            if !is_active{
+            let (owner_address, initialized, duration, time_zero_from_block, is_active) = action;
+            println!("Transfer action: {:?}", action);
+            if !is_active {
                 break;
             }
-            println!("new timestamp {:?}",time_zero_from_block);
+            println!("new timestamp {:?}", time_zero_from_block);
             time_zero = time_zero_from_block.as_u64();
+        }else if contract_address == swap_address {
+            let action = swap_contract.get_action_by_id(action_id.clone()).call().await?;
+            let (owner_address, initialized, duration, time_zero_from_block, token_in, token_out, amount_in, from, to, is_active) = action;
+            println!("Swap action: {:?}", action);
+            if !is_active {
+                break;
+            }
+            println!("new timestamp {:?}", time_zero_from_block);
+            time_zero = time_zero_from_block.as_u64();
+        }
+
          }
     }
 
